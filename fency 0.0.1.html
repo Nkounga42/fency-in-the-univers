@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeu de Vaisseau Spatial</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            max-width: 400px;
+        }
+        
+        h2 {
+            margin-top: 0;
+            color: #00FFFF;
+        }
+        
+        .key {
+            background-color: #333;
+            border-radius: 3px;
+            padding: 2px 6px;
+            margin: 0 2px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <h2>Contrôles du Vaisseau Spatial</h2>
+        <p><b>Clavier:</b></p>
+        <ul>
+            <li><span class="key">Z</span> ou <span class="key">↑</span> - Avancer</li>
+            <li><span class="key">Q</span> ou <span class="key">←</span> - Tourner à gauche</li>
+            <li><span class="key">D</span> ou <span class="key">→</span> - Tourner à droite</li>
+            <li><span class="key">S</span> ou <span class="key">↓</span> - Freiner</li>
+        </ul>
+        <p><b>Souris:</b></p>
+        <ul>
+            <li><span class="key">M</span> - Activer/désactiver le contrôle à la souris</li>
+            <li>Déplacer la souris - Orienter le vaisseau</li>
+            <li>Clic gauche - Accélérer</li>
+        </ul>
+    </div>
+
+    <script>
+        class Spaceship {
+            constructor(x, y) {
+                // Position du vaisseau
+                this.x = x;
+                this.y = y;
+                
+                // Rotation du vaisseau (en degrés)
+                this.rotation = 0;
+                
+                // Vitesse actuelle
+                this.speed = 0;
+                this.maxSpeed = 5;
+                this.acceleration = 0.1;
+                this.deceleration = 0.05;
+                
+                // Variables de contrôle
+                this.moveForward = false;
+                this.rotateLeft = false;
+                this.rotateRight = false;
+                this.brake = false;
+                
+                // Variables pour le contrôle de la souris
+                this.mouseControl = false;
+                this.targetX = x;
+                this.targetY = y;
+                this.rotationSpeed = 3;
+                
+                // Dimensions du vaisseau
+                this.width = 30;
+                this.height = 50;
+                
+                // Couleur du vaisseau
+                this.color = "#00FFFF";
+                
+                // Liaison des événements clavier et souris
+                this.setupControls();
+            }
+            
+            setupControls() {
+                // Gestion des touches du clavier (appui)
+                document.addEventListener('keydown', (e) => {
+                    switch(e.key) {
+                        case 'z':
+                        case 'ArrowUp':
+                            this.moveForward = true;
+                            break;
+                        case 'q':
+                        case 'ArrowLeft':
+                            this.rotateLeft = true;
+                            break;
+                        case 'd':
+                        case 'ArrowRight':
+                            this.rotateRight = true;
+                            break;
+                        case 's':
+                        case 'ArrowDown':
+                            this.brake = true;
+                            break;
+                        case 'm':
+                            // Activer/désactiver le contrôle à la souris
+                            this.mouseControl = !this.mouseControl;
+                            console.log("Contrôle souris: " + (this.mouseControl ? "activé" : "désactivé"));
+                            break;
+                    }
+                });
+                
+                // Gestion des touches du clavier (relâchement)
+                document.addEventListener('keyup', (e) => {
+                    switch(e.key) {
+                        case 'z':
+                        case 'ArrowUp':
+                            this.moveForward = false;
+                            break;
+                        case 'q':
+                        case 'ArrowLeft':
+                            this.rotateLeft = false;
+                            break;
+                        case 'd':
+                        case 'ArrowRight':
+                            this.rotateRight = false;
+                            break;
+                        case 's':
+                        case 'ArrowDown':
+                            this.brake = false;
+                            break;
+                    }
+                });
+                
+                // Gestion de la souris
+                document.addEventListener('mousemove', (e) => {
+                    if (this.mouseControl) {
+                        // Mettre à jour la position cible
+                        this.targetX = e.clientX;
+                        this.targetY = e.clientY;
+                    }
+                });
+                
+                // Gestion du clic de souris
+                document.addEventListener('mousedown', (e) => {
+                    if (this.mouseControl) {
+                        // Accélération au clic
+                        this.moveForward = true;
+                    }
+                });
+                
+                document.addEventListener('mouseup', (e) => {
+                    if (this.mouseControl) {
+                        this.moveForward = false;
+                    }
+                });
+            }
+            
+            update(canvas) {
+                // Mise à jour de la rotation basée sur le clavier
+                if (!this.mouseControl) {
+                    if (this.rotateLeft) {
+                        this.rotation -= this.rotationSpeed;
+                    }
+                    if (this.rotateRight) {
+                        this.rotation += this.rotationSpeed;
+                    }
+                } else {
+                    // Calcul de l'angle vers la position de la souris
+                    const dx = this.targetX - this.x;
+                    const dy = this.targetY - this.y;
+                    console.log(dx,dy)
+                    const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+                    
+                    // Rotation progressive vers l'angle cible
+                    let angleDiff = targetAngle - this.rotation;
+                    
+                    // Normaliser la différence d'angle entre -180 et 180
+                    while (angleDiff > 180) angleDiff -= 360;
+                    while (angleDiff < -180) angleDiff += 360;
+                    
+                    // Appliquer une rotation progressive
+                    if (Math.abs(angleDiff) > 1) {
+                        this.rotation += Math.sign(angleDiff) * Math.min(this.rotationSpeed, Math.abs(angleDiff));
+                    }
+                }
+                
+                // Normaliser l'angle de rotation
+                this.rotation = this.rotation % 360;
+                if (this.rotation < 0) this.rotation += 360;
+                
+                // Mise à jour de la vitesse
+                if (this.moveForward) {
+                    this.speed = Math.min(this.maxSpeed, this.speed + this.acceleration);
+                } else if (this.brake) {
+                    this.speed = Math.max(0, this.speed - this.deceleration * 2);
+                } else {
+                    this.speed = Math.max(0, this.speed - this.deceleration);
+                }
+                
+                // Calcul des composantes de déplacement
+                const angleRad = (this.rotation - 90) * (Math.PI / 180);
+                const dx = Math.cos(angleRad) * this.speed;
+                const dy = Math.sin(angleRad) * this.speed;
+                
+                // Mise à jour de la position
+                this.x += dx;
+                this.y += dy;
+                
+                // Gestion des bords de l'écran (wrap around)
+                if (canvas) {
+                    if (this.x < 0) this.x = canvas.width;
+                    if (this.x > canvas.width) this.x = 0;
+                    if (this.y < 0) this.y = canvas.height;
+                    if (this.y > canvas.height) this.y = 0;
+                }
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                
+                // Transférer le contexte à la position du vaisseau
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation * Math.PI / 180);
+                
+                // Dessiner le vaisseau
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(0, -this.height / 2);  // Pointe du vaisseau
+                ctx.lineTo(-this.width / 2, this.height / 2);  // Coin inférieur gauche
+                ctx.lineTo(0, this.height / 3);    // Point milieu bas
+                ctx.lineTo(this.width / 2, this.height / 2);   // Coin inférieur droit
+                ctx.closePath();
+                ctx.fill();
+                
+                // Dessiner la propulsion si le vaisseau avance
+                if (this.moveForward) {
+                    ctx.fillStyle = "#FF5500";
+                    ctx.beginPath();
+                    ctx.moveTo(-this.width / 4, this.height / 3);
+                    ctx.lineTo(0, this.height / 2 + this.speed * 3);
+                    ctx.lineTo(this.width / 4, this.height / 3);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+
+        // Initialisation du jeu
+        function init() {
+            const canvas = document.createElement('canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            document.body.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            const spaceship = new Spaceship(canvas.width / 2, canvas.height / 2);
+            
+            // Fonction principale du jeu
+            function gameLoop() {
+                // Effacer le canvas
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Dessiner des étoiles en arrière-plan
+                drawStars(ctx, canvas);
+                
+                // Mettre à jour et dessiner le vaisseau
+                spaceship.update(canvas);
+                 spaceship.draw(ctx);
+                
+                // Afficher les infos de débogage
+                ctx.fillStyle = '#FFF';
+                ctx.font = '14px Arial';
+                ctx.fillText(`Position: (${Math.round(spaceship.x)}, ${Math.round(spaceship.y)})`, 10, canvas.height - 60);
+                ctx.fillText(`Rotation: ${Math.round(spaceship.rotation)}°`, 10, canvas.height - 40);
+                ctx.fillText(`Vitesse: ${spaceship.speed.toFixed(2)}`, 10, canvas.height - 20);
+                ctx.fillText(`Mode souris: ${spaceship.mouseControl ? 'Activé' : 'Désactivé'}`, 10, canvas.height - 80);
+                
+                // Dessiner une étoile au point ciblé par la souris si le mode souris est activé
+                if (spaceship.mouseControl) {
+                    ctx.fillStyle = '#FFFF00';
+                    ctx.beginPath();
+                    ctx.arc(spaceship.targetX, spaceship.targetY, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Continuer la boucle de jeu
+                requestAnimationFrame(gameLoop);
+            }
+            
+            // Redimensionner le canvas si la fenêtre change de taille
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+            
+            // Démarrer la boucle de jeu
+            gameLoop();
+        }
+        
+        // Fonction pour dessiner des étoiles en arrière-plan
+        function drawStars(ctx, canvas) {
+            // Créer 100 étoiles statiques
+            if (!window.stars) {
+                window.stars = [];
+                for (let i = 0; i < 100; i++) {
+                    window.stars.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        size: Math.random() * 2 + 1,
+                        brightness: Math.random()
+                    });
+                }
+            }
+            
+            // Dessiner les étoiles
+            window.stars.forEach(star => {
+                // Faire clignoter légèrement les étoiles
+                const brightness = 0.5 + (Math.sin(Date.now() * 0.001 + star.brightness * 10) + 1) * 0.25;
+                
+                ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Lancer l'initialisation quand la page est chargée
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

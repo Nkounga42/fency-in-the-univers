@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeu de Vaisseau Spatial - Minimap Circulaire</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #instructions , #debug {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            max-width: 400px;
+            z-index: 100;
+        }
+        
+        h2 {
+            margin-top: 0;
+            color: #00FFFF;
+        }
+        
+        .key {
+            background-color: #333;
+            border-radius: 3px;
+            padding: 2px 6px;
+            margin: 0 2px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug">
+
+    </div>
+    <div id="instructions" hidden>
+        <h2>Contrôles du Vaisseau Spatial</h2>
+        <p><b>Clavier:</b></p>
+        <ul>
+            <li><span class="key">Z</span> ou <span class="key">↑</span> - Avancer</li>
+            <li><span class="key">Q</span> ou <span class="key">←</span> - Tourner à gauche</li>
+            <li><span class="key">D</span> ou <span class="key">→</span> - Tourner à droite</li>
+            <li><span class="key">S</span> ou <span class="key">↓</span> - Freiner</li>
+        </ul>
+        <p><b>Souris:</b></p>
+        <ul>
+            <li><span class="key">M</span> - Activer/désactiver le contrôle à la souris</li>
+            <li>Déplacer la souris - Orienter le vaisseau</li>
+            <li>Clic gauche - Accélérer</li>
+        </ul>
+    </div>
+    
+    <script>
+        let debug = document.getElementById('debug');
+        class Spaceship {
+    constructor(x, y) {
+        // Position du vaisseau
+        this.x = x;
+        this.y = y;
+        
+        // Rotation du vaisseau (en degrés)
+        this.rotation = 0;
+        
+        // Vitesse actuelle
+        this.speed = 0;
+        this.maxSpeed = 5;
+        this.acceleration = 0.1;
+        this.deceleration = 0.05;
+        
+        // Variables de contrôle
+        this.moveForward = false;
+        this.rotateLeft = false;
+        this.rotateRight = false;
+        this.brake = false;
+        
+        // Variables pour le contrôle de la souris
+        this.mouseControl = false;
+        this.targetX = x;
+        this.targetY = y;
+        this.rotationSpeed = 3;
+        
+        // Dimensions du vaisseau
+        this.width = 30;
+        this.height = 50;
+        
+        // Couleur du vaisseau
+        this.color = "#00FFFF";
+        
+        // Projectiles
+        this.projectiles = [];
+        this.fireCooldown = 0;
+        this.fireRate = 10; // Plus la valeur est basse, plus le tir est rapide
+        
+        // Liaison des événements clavier et souris
+        this.setupControls();
+    }
+    
+    setupControls() {
+        // Gestion des touches du clavier (appui)
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'z':
+                case 'ArrowUp':
+                    this.moveForward = true;
+                    break;
+                case 'q':
+                case 'ArrowLeft':
+                    this.rotateLeft = true;
+                    break;
+                case 'd':
+                case 'ArrowRight':
+                    this.rotateRight = true;
+                    break;
+                case 's':
+                case 'ArrowDown':
+                    this.brake = true;
+                    break;
+                case 'm':
+                    // Activer/désactiver le contrôle à la souris
+                    this.mouseControl = !this.mouseControl;
+                    console.log("Contrôle souris: " + (this.mouseControl ? "activé" : "désactivé"));
+                    break;
+                case ' ':
+                    // Tirer un projectile avec la barre d'espace
+                    this.fire();
+                    break;
+            }
+        });
+        
+        // Gestion des touches du clavier (relâchement)
+        document.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'z':
+                case 'ArrowUp':
+                    this.moveForward = false;
+                    break;
+                case 'q':
+                case 'ArrowLeft':
+                    this.rotateLeft = false;
+                    break;
+                case 'd':
+                case 'ArrowRight':
+                    this.rotateRight = false;
+                    break;
+                case 's':
+                case 'ArrowDown':
+                    this.brake = false;
+                    break;
+            }
+        });
+        
+        // Gestion de la souris
+        document.addEventListener('mousemove', (e) => {
+            if (this.mouseControl) {
+                // Mettre à jour la position cible
+                this.targetX = e.clientX;
+                this.targetY = e.clientY;
+            }
+        });
+        
+        // Gestion du clic de souris
+        document.addEventListener('mousedown', (e) => {
+            // Tirer un projectile avec le clic de souris
+            this.fire();
+        });
+        
+        document.addEventListener('mouseup', (e) => {
+            if (this.mouseControl) {
+                this.moveForward = false;
+            }
+        });
+    }
+    
+    fire() {
+        if (this.fireCooldown <= 0) {
+            // Calcul de la position de départ du projectile (devant le vaisseau)
+            const angleRad = (this.rotation - 90) * (Math.PI / 180);
+            const startX = this.x + Math.cos(angleRad) * (this.height / 2);
+            const startY = this.y + Math.sin(angleRad) * (this.height / 2);
+            
+            // Créer un nouveau projectile
+            const projectile = {
+                x: startX,
+                y: startY,
+                speed: 10, // Vitesse du projectile
+                angle: this.rotation,
+                life: 100 // Durée de vie du projectile (en frames)
+            };
+            
+            this.projectiles.push(projectile);
+            this.fireCooldown = this.fireRate;
+        }
+    }
+    
+    updateProjectiles(game) {
+        // Mettre à jour les projectiles
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+            
+            // Calcul du déplacement
+            const angleRad = (p.angle - 90) * (Math.PI / 180);
+            p.x += Math.cos(angleRad) * p.speed;
+            p.y += Math.sin(angleRad) * p.speed;
+            
+            // Décrémenter la durée de vie
+            p.life--;
+            
+            // Supprimer les projectiles qui ont expiré ou qui sont hors écran
+            if (p.life <= 0 || 
+                p.x < -game.worldSize || p.x > game.worldSize * 2 || 
+                p.y < -game.worldSize || p.y > game.worldSize * 2) {
+                this.projectiles.splice(i, 1);
+            }
+        }
+        
+        // Réduire le cooldown du tir
+        if (this.fireCooldown > 0) {
+            this.fireCooldown--;
+        }
+    }
+    
+    drawProjectiles(ctx, game) {
+        ctx.save();
+        ctx.fillStyle = "#FF0000"; // Couleur des projectiles
+        
+        for (const p of this.projectiles) {
+            // Calculer la position à l'écran en tenant compte de la caméra
+            const screenX = p.x - game.cameraOffsetX + game.canvas.width / 2;
+            const screenY = p.y - game.cameraOffsetY + game.canvas.height / 2;
+            
+            // Dessiner le projectile (un simple cercle)
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+    
+    update(game) {
+        // Mise à jour de la rotation basée sur le clavier
+        if (!this.mouseControl) {
+            if (this.rotateLeft) {
+                this.rotation -= this.rotationSpeed;
+            }
+            if (this.rotateRight) {
+                this.rotation += this.rotationSpeed;
+            }
+        } else {
+            // Calcul de l'angle vers la position de la souris (sans ajustement de caméra)
+            const dx = this.targetX - game.canvas.width / 2;
+            const dy = this.targetY - game.canvas.height / 2;
+            const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+            
+            // Rotation progressive vers l'angle cible
+            let angleDiff = targetAngle - this.rotation;
+            
+            // Normaliser la différence d'angle entre -180 et 180
+            while (angleDiff > 180) angleDiff -= 360;
+            while (angleDiff < -180) angleDiff += 360;
+            
+            // Appliquer une rotation progressive
+            if (Math.abs(angleDiff) > 1) {
+                this.rotation += Math.sign(angleDiff) * Math.min(this.rotationSpeed, Math.abs(angleDiff));
+            }
+            
+            // En mode souris, le vaisseau avance automatiquement
+        }
+        
+        // Normaliser l'angle de rotation
+        this.rotation = this.rotation % 360;
+        if (this.rotation < 0) this.rotation += 360;
+        
+        // Mise à jour de la vitesse
+        if (this.moveForward) {
+            this.speed = Math.min(this.maxSpeed, this.speed + this.acceleration);
+        } else if (this.brake) {
+            this.speed = Math.max(0, this.speed - this.deceleration * 2);
+        } else {
+            this.speed = Math.max(0, this.speed - this.deceleration);
+        }
+        
+        // Calcul des composantes de déplacement
+        const angleRad = (this.rotation - 90) * (Math.PI / 180);
+        const dx = Math.cos(angleRad) * this.speed;
+        const dy = Math.sin(angleRad) * this.speed;
+        
+        // Mise à jour de la position
+        this.x += dx;
+        this.y += dy;
+        
+        // Mettre à jour le décalage de la caméra en fonction du déplacement du vaisseau
+        game.cameraOffsetX += dx;
+        game.cameraOffsetY += dy;
+        
+        // Mettre à jour les projectiles
+        this.updateProjectiles(game);
+    }
+    
+    draw(ctx, game) {
+        // Dessiner les projectiles d'abord (pour qu'ils soient sous le vaisseau)
+        this.drawProjectiles(ctx, game);
+        
+        // Dessiner le vaisseau
+        ctx.save();
+        
+        // Dessiner le vaisseau au centre de l'écran
+        const screenX = game.canvas.width / 2;
+        const screenY = game.canvas.height / 2;
+        
+        ctx.translate(screenX, screenY);
+        ctx.rotate(this.rotation * Math.PI / 180);
+        
+        // Dessiner le vaisseau
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.moveTo(0, -this.height / 2);  // Pointe du vaisseau
+        ctx.lineTo(-this.width / 2, this.height / 2);  // Coin inférieur gauche
+        ctx.lineTo(0, this.height / 3);    // Point milieu bas
+        ctx.lineTo(this.width / 2, this.height / 2);   // Coin inférieur droit
+        ctx.closePath();
+        ctx.fill();
+        
+        // Dessiner la propulsion si le vaisseau avance
+        if (this.moveForward) {
+            ctx.fillStyle = "#FF5500";
+            ctx.beginPath();
+            ctx.moveTo(-this.width / 4, this.height / 3);
+            ctx.lineTo(0, this.height / 2 + this.speed * 3);
+            ctx.lineTo(this.width / 4, this.height / 3);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+}
+        class Star {
+            constructor(x, y, size, brightness, game) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.brightness = brightness;
+                
+                // Stocker les coordonnées d'origine pour le parallaxe
+                this.originalX = x;
+                this.originalY = y;
+                
+                // Définir la couche de parallaxe (profondeur)
+                this.parallaxFactor = Math.random() * 0.8 + 0.2; // Entre 0.2 et 1.0
+                
+                // Définir la taille du champ d'étoiles
+                this.fieldSize = Math.max(game.canvas.width, game.canvas.height) * 3;
+            }
+            
+            update(game) {
+                // Calculer la position de l'étoile en fonction du décalage de la caméra
+                // Les étoiles plus lointaines (parallaxFactor plus petit) bougent plus lentement
+                let adjustedX = this.originalX - game.cameraOffsetX * this.parallaxFactor;
+                let adjustedY = this.originalY - game.cameraOffsetY * this.parallaxFactor;
+                
+                // Assurer que les étoiles restent visibles en créant un effet de tiling
+                const fieldSize = this.fieldSize;
+                
+                // Effet de tiling pour que les étoiles apparaissent infiniment
+                adjustedX = (adjustedX % fieldSize + fieldSize) % fieldSize;
+                adjustedY = (adjustedY % fieldSize + fieldSize) % fieldSize;
+                
+                // Repositionner par rapport au centre du canvas
+                adjustedX -= fieldSize / 2 - game.canvas.width / 2;
+                adjustedY -= fieldSize / 2 - game.canvas.height / 2;
+                
+                this.x = adjustedX;
+                this.y = adjustedY;
+            }
+            
+            draw(ctx) {
+                // Ne dessiner l'étoile que si elle est visible sur l'écran
+                if (this.x >= -10 && this.x <= ctx.canvas.width + 10 &&
+                    this.y >= -10 && this.y <= ctx.canvas.height + 10) {
+                    
+                    // Faire clignoter légèrement les étoiles
+                    const brightness = 0.5 + (Math.sin(Date.now() * 0.001 + this.brightness * 10) + 1) * 0.25;
+                    
+                    ctx.fillStyle = `rgba(255, 255, 255, ${brightness * this.parallaxFactor})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * this.parallaxFactor, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        class Game {
+            constructor() {
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                document.body.appendChild(this.canvas);
+                
+                this.ctx = this.canvas.getContext('2d');
+                
+                // Offset de la caméra (commence à 0,0)
+                this.cameraOffsetX = 0;
+                this.cameraOffsetY = 0;
+                
+                // Créer le vaisseau au centre de l'écran
+                this.spaceship = new Spaceship(0, 0);
+                
+                // Créer des étoiles pour le fond
+                this.initStars(500); // Plus d'étoiles pour un effet plus dense
+                
+                // Coordonnées absolues pour le suivi (pour le débogage)
+                this.absoluteX = 0;
+                this.absoluteY = 0;
+                
+                // Redimensionner le canvas si la fenêtre change de taille
+                window.addEventListener('resize', () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                });
+                
+                // Minimap (activée par défaut)
+                this.showMinimap = true;
+                this.minimapRadius = 80; // Rayon de la minimap circulaire
+                
+                // Démarrer la boucle de jeu
+                this.gameLoop();
+            }
+            
+            initStars(count) {
+                this.stars = [];
+                const fieldSize = Math.max(this.canvas.width, this.canvas.height) * 3;
+                
+                for (let i = 0; i < count; i++) {
+                    // Créer des étoiles réparties sur un champ plus large que l'écran
+                    const x = Math.random() * fieldSize - fieldSize/2 + this.canvas.width/2;
+                    const y = Math.random() * fieldSize - fieldSize/2 + this.canvas.height/2;
+                    
+                    this.stars.push(new Star(
+                        x, 
+                        y, 
+                        Math.random() * 2 + 0.5, // Taille variable
+                        Math.random(),
+                        this
+                    ));
+                }
+            }
+            
+            gameLoop() {
+                // Effacer le canvas
+                this.ctx.fillStyle = '#000011'; // Bleu très foncé pour un effet spatial
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Mettre à jour et dessiner les étoiles
+                for (const star of this.stars) {
+                    star.update(this);
+                    star.draw(this.ctx);
+                }
+                
+                // Mettre à jour le vaisseau
+                this.spaceship.update(this);
+                
+                // Mettre à jour les coordonnées absolues pour le suivi
+                this.absoluteX = this.spaceship.x;
+                this.absoluteY = this.spaceship.y;
+                
+                // Dessiner la grille de coordonnées (optionnel, pour l'effet visuel)
+                this.drawGrid();
+                
+                // Dessiner le vaisseau
+                this.spaceship.draw(this.ctx, this);
+                
+                // Dessiner la minimap si activée
+                if (this.showMinimap) {
+                    this.drawCircularMinimap();
+                }
+                
+                // Afficher les infos de débogage
+                this.drawDebugInfo();
+                
+                // Dessiner un point de repère au point ciblé par la souris si le mode souris est activé
+                if (this.spaceship.mouseControl) {
+                    this.ctx.fillStyle = '#FFFF00';
+                    this.ctx.beginPath();
+                    this.ctx.arc(this.spaceship.targetX, this.spaceship.targetY, 5, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                
+                // Continuer la boucle de jeu
+                requestAnimationFrame(() => this.gameLoop());
+            }
+            
+            drawGrid() {
+                // Dessiner une grille de repères qui se déplace avec la caméra
+                const gridSize = 200; // Taille des cellules de la grille
+                const gridOpacity = 0.2; // Opacité de la grille
+                
+                // Calculer les offset pour que la grille se déplace en fonction de la caméra
+                const offsetX = this.cameraOffsetX % gridSize;
+                const offsetY = this.cameraOffsetY % gridSize;
+                
+                this.ctx.strokeStyle = `rgba(50, 100, 200, ${gridOpacity})`;
+                this.ctx.lineWidth = 1;
+                
+                // Lignes verticales
+                for (let x = -offsetX; x <= this.canvas.width; x += gridSize) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x, this.canvas.height);
+                    this.ctx.stroke();
+                }
+                
+                // Lignes horizontales
+                for (let y = -offsetY; y <= this.canvas.height; y += gridSize) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, y);
+                    this.ctx.lineTo(this.canvas.width, y);
+                    this.ctx.stroke();
+                }
+                
+                // Dessiner un grand cercle de repère au centre de l'univers
+                const distanceToOrigin = Math.sqrt(
+                    this.cameraOffsetX * this.cameraOffsetX + 
+                    this.cameraOffsetY * this.cameraOffsetY
+                );
+                
+                // Calculer la position du centre de l'univers sur l'écran
+                const originScreenX = this.canvas.width / 2 - this.cameraOffsetX;
+                const originScreenY = this.canvas.height / 2 - this.cameraOffsetY;
+                
+                // Dessiner un indicateur du centre de l'univers s'il est proche de l'écran
+                const viewRadius = Math.sqrt(
+                    (this.canvas.width/2) * (this.canvas.width/2) + 
+                    (this.canvas.height/2) * (this.canvas.height/2)
+                ) + 100;
+                
+                if (distanceToOrigin < viewRadius) {
+                    // Dessiner un cercle au centre de l'univers
+                    this.ctx.strokeStyle = 'rgba(255, 100, 100, 0.8)';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(originScreenX, originScreenY, 50, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                    
+                    // Croix au centre
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(originScreenX - 20, originScreenY);
+                    this.ctx.lineTo(originScreenX + 20, originScreenY);
+                    this.ctx.moveTo(originScreenX, originScreenY - 20);
+                    this.ctx.lineTo(originScreenX, originScreenY + 20);
+                    this.ctx.stroke();
+                }
+            }
+            
+            drawCircularMinimap() {
+                const padding = 20; // Marge par rapport au bord de l'écran
+                const radius = this.minimapRadius;
+                const x = this.canvas.width - radius - padding;
+                const y = this.canvas.height - radius - padding * 2;
+                const centerX = x;
+                const centerY = y;
+                
+                this.ctx.save();
+                
+                // Créer un masque circulaire pour la minimap
+                this.ctx.beginPath();
+                this.ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                this.ctx.clip(); // Tout ce qui est dessiné après sera limité à ce cercle
+                
+                // Dessiner le fond de la minimap
+                this.ctx.fillStyle = 'rgba(0, 0, 30, 0.7)';
+                this.ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+                
+                // Échelle de la minimap (plus petit = vue plus large)
+                const scale = 0.01;
+                const maxDetectionRange = radius / scale; // Distance maximale visible sur la minimap
+                
+                // Dessiner une grille circulaire (radar)
+                this.ctx.strokeStyle = 'rgba(100, 150, 255, 0.3)';
+                this.ctx.lineWidth = 1;
+                
+                // Dessiner des cercles concentriques
+                for (let r = radius / 4; r <= radius; r += radius / 4) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                }
+                
+                // Dessiner des lignes radiales (comme une boussole)
+                for (let angle = 0; angle < 360; angle += 45) {
+                    const radian = angle * Math.PI / 180;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(centerX, centerY);
+                    this.ctx.lineTo(
+                        centerX + Math.cos(radian) * radius,
+                        centerY + Math.sin(radian) * radius
+                    );
+                    this.ctx.stroke();
+                }
+                // Effet de radar animé
+                const radarTime = Date.now() * 0.002; // Vitesse d'animation
+                const radarAngle = ((radarTime / 8) % 1) * Math.PI * 2; // Angle du balayage radar
+                
+                // Dessiner le balayage radar
+                const gradient = this.ctx.createRadialGradient(
+                    centerX, centerY, 0,
+                    centerX, centerY, radius
+                );
+                gradient.addColorStop(0, 'rgba(0, 255, 0, 0.1)');
+                gradient.addColorStop(0.8, 'rgba(0, 255, 0, 0.05)');
+                gradient.addColorStop(1, 'rgba(0, 255, 0, 0)');
+                
+                this.ctx.fillStyle = gradient;
+                this.ctx.beginPath();
+                this.ctx.moveTo(centerX, centerY);
+                this.ctx.arc(centerX, centerY, radius, radarAngle - 0.2, radarAngle + 0.2);
+                this.ctx.closePath();
+                this.ctx.fill();
+                
+                // Dessiner une ligne pour le balayage radar
+                this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.moveTo(centerX, centerY);
+                this.ctx.lineTo(
+                    centerX + Math.cos(radarAngle) * radius,
+                    centerY + Math.sin(radarAngle) * radius
+                );
+                this.ctx.stroke();
+                // Dessiner le point de repère du centre de l'univers (origine)
+                // Calculer la position relative du centre de l'univers par rapport au vaisseau
+                const relativeOriginX = -this.absoluteX * scale;
+                const relativeOriginY = -this.absoluteY * scale;
+                
+                // Vérifier si l'origine est dans le rayon visible de la minimap
+                const distanceToOrigin = Math.sqrt(
+                    this.absoluteX * this.absoluteX + 
+                    this.absoluteY * this.absoluteY
+                );
+                
+                if (distanceToOrigin < maxDetectionRange) {
+                    this.ctx.fillStyle = 'rgba(255, 100, 100, 0.8)';
+                    this.ctx.beginPath();
+                    this.ctx.arc(
+                        centerX + relativeOriginX, 
+                        centerY + relativeOriginY, 
+                        4, 
+                        0, 
+                        Math.PI * 2
+                    );
+                    this.ctx.fill();
+                }
+                
+                // Dessiner le vaisseau au centre de la minimap
+                this.ctx.fillStyle = '#00FFFF';
+                this.ctx.beginPath();
+                this.ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                 
+
+                // Dessiner une flèche indiquant la direction du vaisseau
+                const dirX = Math.sin(this.spaceship.rotation * Math.PI / 180) * 8;
+                const dirY = -Math.cos(this.spaceship.rotation * Math.PI / 180) * 8;
+                
+                this.ctx.strokeStyle = '#00FFFF';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(centerX, centerY);
+                this.ctx.lineTo(centerX + dirX, centerY + dirY);
+                this.ctx.stroke();
+                
+                // Restaurer le contexte (supprime le masque de découpage)
+                this.ctx.restore();
+                
+                // Dessiner le contour de la minimap (après avoir restauré le contexte)
+                this.ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                this.ctx.stroke();
+                
+                // Dessiner des marques N, S, E, W sur le bord de la minimap
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                this.ctx.font = '12px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                
+                // Nord (en haut)
+                this.ctx.fillText('N', centerX, centerY - radius + 8);
+                // Sud (en bas)
+                this.ctx.fillText('S', centerX, centerY + radius - 8);
+                // Est (à droite)
+                this.ctx.fillText('E', centerX + radius - 8, centerY);
+                // Ouest (à gauche)
+                this.ctx.fillText('O', centerX - radius + 8, centerY);
+                 
+            }
+            
+            drawDebugInfo() {
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; 
+                
+                this.ctx.fillStyle = '#FFF';
+                this.ctx.font = '14px Arial';
+                debug.innerHTML = `Position du vaisseau: (${Math.round(this.spaceship.x)}, ${Math.round(this.spaceship.y)})`;
+                debug.innerHTML += `<br>Vitesse: ${this.spaceship.speed.toFixed(2)}`;
+                debug.innerHTML += `<br>Rotation: ${Math.round(this.spaceship.rotation)}°`;
+                debug.innerHTML += `<br>Mode souris: ${this.spaceship.mouseControl ? 'Activé' : 'Désactivé'}`;
+                debug.innerHTML += `<br>Distance du centre: ${Math.round(Math.sqrt(this.spaceship.x**2 + this.spaceship.y**2))}`;
+                debug.innerHTML += `<br>Mode souris: ${this.spaceship.mouseControl ? 'Activé' : 'Désactivé'}`
+
+            }
+        }
+
+        // Lancer le jeu quand la page est chargée
+        window.addEventListener('load', () => {
+            new Game();
+        });
+    </script>
+</body>
+</html> 
